@@ -1,12 +1,7 @@
+package com.weljak.request_counter.service.external.github.model;
 
-package com.weljak.request_counter.service.external.github;
-
-import com.google.gson.annotations.Expose;
 import com.google.gson.annotations.SerializedName;
-import lombok.AllArgsConstructor;
 import lombok.Data;
-import lombok.EqualsAndHashCode;
-import lombok.NoArgsConstructor;
 
 import java.time.ZonedDateTime;
 
@@ -14,23 +9,17 @@ import java.time.ZonedDateTime;
 public class GithubUserDetailsDto {
     @SerializedName("avatar_url")
     private final String avatarUrl;
-    
     private final Object bio;
-    
     private final String blog;
-    
     private final String company;
     @SerializedName("created_at")
     private final ZonedDateTime createdAt;
-    
     private final String email;
     @SerializedName("events_url")
     private final String eventsUrl;
-    
     private final Long followers;
     @SerializedName("followers_url")
     private final String followersUrl;
-    
     private final Long following;
     @SerializedName("following_url")
     private final String followingUrl;
@@ -38,17 +27,12 @@ public class GithubUserDetailsDto {
     private final String gistsUrl;
     @SerializedName("gravatar_id")
     private final String gravatarId;
-    
     private final Boolean hireable;
     @SerializedName("html_url")
     private final String htmlUrl;
-    
     private final Long id;
-    
     private final String location;
-    
     private final String login;
-    
     private final String name;
     @SerializedName("node_id")
     private final String nodeId;
@@ -70,11 +54,9 @@ public class GithubUserDetailsDto {
     private final String subscriptionsUrl;
     @SerializedName("twitter_username")
     private final String twitterUsername;
-    
     private final String type;
     @SerializedName("updated_at")
     private final ZonedDateTime updatedAt;
-    
     private final String url;
 
 }

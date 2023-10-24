@@ -1,5 +1,6 @@
 package com.weljak.request_counter.service.external.github;
 
+import com.weljak.request_counter.service.external.github.model.GithubUserDetailsDto;
 import retrofit2.Call;
 import retrofit2.http.GET;
 import retrofit2.http.Path;

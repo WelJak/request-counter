@@ -1,43 +1,51 @@
 package com.weljak.request_counter.service.github;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import com.github.tomakehurst.wiremock.WireMockServer;
+import com.maciejwalkowiak.wiremock.spring.ConfigureWireMock;
+import com.maciejwalkowiak.wiremock.spring.EnableWireMock;
+import com.maciejwalkowiak.wiremock.spring.InjectWireMock;
 import com.weljak.request_counter.domain.github.request.GithubGetUserDetailsRequestCount;
 import com.weljak.request_counter.domain.github.request.GithubUserDetailsRequestCountRepository;
 import com.weljak.request_counter.service.ExternalUserDetailsService;
-import com.weljak.request_counter.service.external.github.GithubApiService;
-import com.weljak.request_counter.service.external.github.GithubUserDetailsDto;
-import okhttp3.ResponseBody;
+import com.weljak.request_counter.service.external.github.exception.ExternalApiException;
+import com.weljak.request_counter.util.FileLoader;
 import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import org.mockito.Mock;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.boot.test.mock.mockito.MockReset;
+import org.springframework.http.HttpStatus;
 import org.springframework.test.context.ActiveProfiles;
-import retrofit2.Call;
-import retrofit2.Response;
-import retrofit2.Retrofit;
 
 import java.io.IOException;
-import java.time.ZonedDateTime;
-import java.util.Optional;
 
+import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
+import static com.github.tomakehurst.wiremock.client.WireMock.get;
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
 
 @SpringBootTest
 @ActiveProfiles("test")
+@EnableWireMock({
+        @ConfigureWireMock(port = 443, name = "github-service", property = "weljak.com.github.base.url")
+})
 public class GithubExternalUserDetailsServiceTest {
+    private static final ObjectMapper objectMapper = new ObjectMapper();
+
     @Autowired
     private GithubUserDetailsRequestCountRepository repository;
 
-    @MockBean(reset = MockReset.BEFORE)
-    private Retrofit retrofit;
-
-
     @Autowired
-    GithubUserDetailsService service;
+    private ExternalUserDetailsService service;
+
+    @InjectWireMock("github-service")
+    private WireMockServer wireMockServer;
+
+    @BeforeAll
+    static void setup() {
+        objectMapper.registerModule(new JavaTimeModule());
+    }
 
     @AfterEach
     void cleanup() {
@@ -47,57 +55,21 @@ public class GithubExternalUserDetailsServiceTest {
     @Test
     void serviceShouldCreateNewEntryAndCallRepoAndHttpClient() throws IOException {
         //given
-        Long testId = 1234L;
-        String testLogin = "testUser";
-        String testName = "testname";
-        String testType = "testtype";
-        String testAvatarUrl = "testAvatarurl";
-        ZonedDateTime testCreatedAt = ZonedDateTime.now();
-        String testCalculations = "18";
-
-        var detailsDto = new GithubUserDetailsDto(
-                testAvatarUrl,
-                null,
-                null,
-                null,
-                testCreatedAt,
-                null,
-                null,
-                1L,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                testId,
-                null,
-                testLogin,
-                testName,
-                null,
-                null,
-                null,
-                1L,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                testType,
-                null,
-                null
-        );
-
+        String fileName = "mock/response/mocked_response_github_api.json";
+        String jsonResponse = FileLoader.loadFileContent(fileName);
+        String testLogin = "WelJak";
+        String expectedId = "54286288";
+        String expectedCalculations = "126";
         assertTrue(repository.findByLogin(testLogin).isEmpty());
 
         //when
-        when(retrofit.create(any())).thenReturn(mock(GithubApiService.class));
-        when(retrofit.create(GithubApiService.class).getGithubUserDetails(any())).thenReturn(mock(Call.class));
-        when(retrofit.create(GithubApiService.class).getGithubUserDetails(any()).execute()).thenReturn(mock(Response.class));
-        when(retrofit.create(GithubApiService.class).getGithubUserDetails(testLogin).execute().body()).thenReturn(detailsDto);
-        when(retrofit.create(GithubApiService.class).getGithubUserDetails(any()).execute().isSuccessful()).thenReturn(true);
+        wireMockServer.stubFor(get("/users/" + testLogin).willReturn(
+                aResponse()
+                        .withStatus(HttpStatus.OK.value())
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(jsonResponse)
+        ));
+
 
         GithubUserDetails result = (GithubUserDetails) service.getUserDetails(testLogin);
 
@@ -106,87 +78,96 @@ public class GithubExternalUserDetailsServiceTest {
         assertTrue(entity.isPresent());
         assertEquals(1, entity.get().getRequestCount());
 
-        assertEquals(testId.toString(), result.getId());
+        assertEquals(expectedId, result.getId());
         assertEquals(testLogin, result.getLogin());
-        assertEquals(testName, result.getName());
-        assertEquals(testType, result.getType());
-        assertEquals(testAvatarUrl, result.getAvatarUrl());
         assertNotNull(result.getCreatedAt());
-        assertEquals(testCalculations, result.getCalculations());
+        assertEquals(expectedCalculations, result.getCalculations());
     }
 
     @Test
     void serviceShouldIncrementRequestCountForExistingEntry() throws IOException {
         //given
-        Long initialRequestCount = 123L;
-        Long testId = 1234L;
-        String testLogin = "testUser";
-        String testName = "testname";
-        String testType = "testtype";
-        String testAvatarUrl = "testAvatarurl";
-        ZonedDateTime testCreatedAt = ZonedDateTime.now();
-        String testCalculations = "18";
+        String fileName = "mock/response/mocked_response_github_api.json";
+        String jsonResponse = FileLoader.loadFileContent(fileName);
+        String testLogin = "WelJak";
+        String expectedId = "54286288";
+        String expectedCalculations = "126";
 
-        repository.save(new GithubGetUserDetailsRequestCount(testLogin, initialRequestCount));
-
-
-        var detailsDto = new GithubUserDetailsDto(
-                testAvatarUrl,
-                null,
-                null,
-                null,
-                testCreatedAt,
-                null,
-                null,
-                1L,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                testId,
-                null,
-                testLogin,
-                testName,
-                null,
-                null,
-                null,
-                1L,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                testType,
-                null,
-                null
-        );
-
+        repository.save(new GithubGetUserDetailsRequestCount(testLogin, 12L));
         assertTrue(repository.findByLogin(testLogin).isPresent());
 
         //when
-        when(retrofit.create(any())).thenReturn(mock(GithubApiService.class));
-        when(retrofit.create(GithubApiService.class).getGithubUserDetails(any())).thenReturn(mock(Call.class));
-        when(retrofit.create(GithubApiService.class).getGithubUserDetails(any()).execute()).thenReturn(mock(Response.class));
-        when(retrofit.create(GithubApiService.class).getGithubUserDetails(testLogin).execute().body()).thenReturn(detailsDto);
-        when(retrofit.create(GithubApiService.class).getGithubUserDetails(any()).execute().isSuccessful()).thenReturn(true);
+        wireMockServer.stubFor(get("/users/" + testLogin).willReturn(
+                aResponse()
+                        .withStatus(HttpStatus.OK.value())
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(jsonResponse)
+        ));
+
 
         GithubUserDetails result = (GithubUserDetails) service.getUserDetails(testLogin);
 
         //then
         var entity = repository.findByLogin(testLogin);
         assertTrue(entity.isPresent());
-        assertEquals(initialRequestCount + 1, entity.get().getRequestCount());
+        assertEquals(13, entity.get().getRequestCount());
 
-        assertEquals(testId.toString(), result.getId());
+        assertEquals(expectedId, result.getId());
         assertEquals(testLogin, result.getLogin());
-        assertEquals(testName, result.getName());
-        assertEquals(testType, result.getType());
-        assertEquals(testAvatarUrl, result.getAvatarUrl());
-        assertEquals(testCreatedAt, result.getCreatedAt());
-        assertEquals(testCalculations, result.getCalculations());
+        assertNotNull(result.getCreatedAt());
+        assertEquals(expectedCalculations, result.getCalculations());
+    }
+
+    @Test
+    void serviceShouldIncrementInvocationCountEvenWhenApiReturnsError() {
+        //given
+        String testLogin = "WelJak";
+
+        repository.save(new GithubGetUserDetailsRequestCount(testLogin, 5L));
+        assertTrue(repository.findByLogin(testLogin).isPresent());
+
+        //when
+        wireMockServer.stubFor(get("/users/" + testLogin).willReturn(
+                aResponse()
+                        .withStatus(HttpStatus.INTERNAL_SERVER_ERROR.value())
+        ));
+
+        assertThrows(ExternalApiException.class, () -> service.getUserDetails(testLogin));
+
+        //then
+        var entity = repository.findByLogin(testLogin);
+        assertTrue(entity.isPresent());
+        assertEquals(6, entity.get().getRequestCount());
+    }
+
+    @Test
+    void serviceShouldNullCalculationsFieldWhenFollowersCountIsZero() {
+        //given
+        String fileName = "mock/response/mocked_response_github_api_0_follower_count.json";
+        String jsonResponse = FileLoader.loadFileContent(fileName);
+        String testLogin = "WelJak";
+        String expectedId = "54286288";
+        assertTrue(repository.findByLogin(testLogin).isEmpty());
+
+        //when
+        wireMockServer.stubFor(get("/users/" + testLogin).willReturn(
+                aResponse()
+                        .withStatus(HttpStatus.OK.value())
+                        .withHeader("Content-Type", "application/json")
+                        .withBody(jsonResponse)
+        ));
+
+
+        GithubUserDetails result = (GithubUserDetails) service.getUserDetails(testLogin);
+
+        //then
+        var entity = repository.findByLogin(testLogin);
+        assertTrue(entity.isPresent());
+        assertEquals(1, entity.get().getRequestCount());
+
+        assertEquals(expectedId, result.getId());
+        assertEquals(testLogin, result.getLogin());
+        assertNotNull(result.getCreatedAt());
+        assertNull(result.getCalculations());
     }
 }
